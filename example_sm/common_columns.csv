@@ -1,0 +1,17 @@
+column_name,display_name,alias,type,category,tag,description,dimension_table,default
+id,ID,,INTEGER,identifier,primary_key,Primary key identifier,,
+name,Name,,VARCHAR(255),attribute,name,Name or title,,
+email,Email,,VARCHAR(255),attribute,contact,Email address,,
+phoneNumber,Phone Number,phone,VARCHAR(50),attribute,contact,Phone number,,
+companyName,Company Name,company,VARCHAR(255),attribute,company,Company or organization name,,
+subscriptionId,Subscription ID,sub_id,INTEGER,identifier,subscription,Reference to subscription,subscription,
+userId,User ID,usr_id,INTEGER,identifier,user,Reference to user,user,
+projectId,Project ID,proj_id,INTEGER,identifier,project,Reference to project,project,
+createdAt,Created At,created,TIMESTAMP,temporal,timestamp,Record creation timestamp,,
+updatedAt,Updated At,updated,TIMESTAMP,temporal,timestamp,Last update timestamp,,
+status,Status,,VARCHAR(50),status,status,Record status or state,,
+isActive,Is Active,active,BOOLEAN,status,flag,Active/inactive flag,,
+deactivatedDate,Deactivated Date,deactivated,TIMESTAMP,temporal,deactivation,User or record deactivation date,,
+lastActivityDate,Last Activity Date,last_activity,TIMESTAMP,temporal,activity,Last activity timestamp,,
+dt,Partition Date,partition_date,VARCHAR(10),temporal,partition,Partition date in 'yyyy-mm-dd' format for Athena tables,,
+

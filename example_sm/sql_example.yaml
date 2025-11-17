@@ -1,0 +1,196 @@
+'':
+  user: |
+    Q: Show me all active users with their names, emails, and companies
+    A: SELECT id, name, email, companyName, jobPosition, department, level, experiencePoints
+    FROM user
+    WHERE deactivatedDate IS NULL 
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY name
+    
+    Q: Find users who belong to subscription 123
+    A: SELECT u.id, u.name, u.email, u.companyName, u.subscriptionId
+    FROM user u
+    WHERE u.subscriptionId = 123
+    AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY u.name
+    
+    Q: List users with their subscription information
+    A: SELECT u.id, u.name, u.email, s.companyName as subscription_company, s.startDate, s.expireDate
+    FROM user u
+    JOIN subscription s ON u.subscriptionId = s.id AND s.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE u.deactivatedDate IS NULL
+    AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY u.name
+    
+    Q: Show users who have completed onboarding (level >= 10)
+    A: SELECT id, name, email, level, experiencePoints, currentTutorial
+    FROM user
+    WHERE level >= 10 AND deactivatedDate IS NULL
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY level DESC, experiencePoints DESC
+    
+  subscription: |
+    Q: List all active subscriptions with company names and expiration dates
+    A: SELECT id, uuid, companyName, startDate, expireDate, planPrice
+    FROM subscription
+    WHERE expireDate IS NULL OR expireDate > CURRENT_DATE
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY companyName
+    
+    Q: Find subscriptions that have DM feature enabled
+    A: SELECT id, companyName, canUseDm, canUseEngage, canUseWorkflow
+    FROM subscription
+    WHERE canUseDm = true
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY companyName
+    
+    Q: Show subscriptions with their user counts
+    A: SELECT s.id, s.companyName, COUNT(u.id) as user_count
+    FROM subscription s
+    LEFT JOIN user u ON s.id = u.subscriptionId AND u.deactivatedDate IS NULL AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE s.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    GROUP BY s.id, s.companyName
+    ORDER BY user_count DESC
+    
+    Q: List subscriptions expiring in the next 30 days
+    A: SELECT id, companyName, expireDate, DATEDIFF(expireDate, CURRENT_DATE) as days_until_expiry
+    FROM subscription
+    WHERE expireDate IS NOT NULL 
+    AND expireDate BETWEEN CURRENT_DATE AND DATE_ADD(CURRENT_DATE, INTERVAL 30 DAY)
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY expireDate
+    
+  project: |
+    Q: Show all active projects with their owners and target companies
+    A: SELECT p.id, p.name, u.name as owner_name, p.companyId, p.clientPersonName, p.createdAt
+    FROM project p
+    JOIN user u ON p.userId = u.id AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE p.completedDate IS NULL
+    AND p.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY p.createdAt DESC
+    
+    Q: Find projects for a specific subscription
+    A: SELECT p.id, p.name, p.companyId, p.clientPersonName, p.completedDate
+    FROM project p
+    WHERE p.subscriptionId = 123
+    AND p.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY p.createdAt DESC
+    
+    Q: List completed projects with completion dates
+    A: SELECT p.id, p.name, p.companyId, p.completedDate, u.name as owner_name
+    FROM project p
+    LEFT JOIN user u ON p.userId = u.id AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE p.completedDate IS NOT NULL
+    AND p.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY p.completedDate DESC
+    
+    Q: Show projects with their action counts
+    A: SELECT p.id, p.name, p.companyId, COUNT(pa.id) as action_count
+    FROM project p
+    LEFT JOIN project_action pa ON p.id = pa.projectId AND pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE p.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    GROUP BY p.id, p.name, p.companyId
+    ORDER BY action_count DESC
+    
+  project_action: |
+    Q: Show all actions for project 456 ordered by date
+    A: SELECT pa.id, pa.actDate, u.name as user_name, pt.name as action_type, pp.name as phase_name, pa.memo
+    FROM project_action pa
+    JOIN user u ON pa.userId = u.id AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    JOIN project_type pt ON pa.projectTypeId = pt.id AND pt.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    JOIN Project_Phase pp ON pa.projectPhaseId = pp.id AND pp.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE pa.projectId = 456
+    AND pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY pa.actDate DESC
+    
+    Q: Find next actions across all projects
+    A: SELECT pa.id, p.name as project_name, pa.actDate, u.name as assigned_user, pt.name as action_type
+    FROM project_action pa
+    JOIN Project p ON pa.projectId = p.id AND p.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    JOIN user u ON pa.userId = u.id AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    JOIN project_type pt ON pa.projectTypeId = pt.id AND pt.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE pa.isNextAction = true
+    AND pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY pa.actDate
+    
+    Q: List actions by type (forms, emails, phone calls, DMs)
+    A: SELECT 
+        pa.id,
+        CASE 
+            WHEN pa.sendFormId IS NOT NULL THEN 'Form'
+            WHEN pa.sendEmailId IS NOT NULL THEN 'Email'
+            WHEN pa.phoneCallId IS NOT NULL THEN 'Phone Call'
+            WHEN pa.sendDmId IS NOT NULL THEN 'DM'
+            ELSE 'Other'
+        END as communication_type,
+        pa.actDate,
+        p.name as project_name
+    FROM project_action pa
+    JOIN Project p ON pa.projectId = p.id AND p.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY pa.actDate DESC
+    
+    Q: Show actions in a specific phase (e.g., closed-won)
+    A: SELECT pa.id, p.name as project_name, pa.actDate, u.name as user_name, pp.name as phase_name
+    FROM project_action pa
+    JOIN Project p ON pa.projectId = p.id AND p.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    JOIN user u ON pa.userId = u.id AND u.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    JOIN Project_Phase pp ON pa.projectPhaseId = pp.id AND pp.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE pp.status = '成約'
+    AND pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY pa.actDate DESC
+    
+  Project_Phase: |
+    Q: List all phases for subscription 123 ordered by workflow
+    A: SELECT id, name, status, orderNumber, leaderContacted
+    FROM Project_Phase
+    WHERE subscriptionId = 123
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY orderNumber
+    
+    Q: Find phases with closed-won status
+    A: SELECT id, name, status, orderNumber
+    FROM Project_Phase
+    WHERE status = '成約'
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY orderNumber
+    
+    Q: Show phases with their action counts
+    A: SELECT pp.id, pp.name, pp.status, COUNT(pa.id) as action_count
+    FROM Project_Phase pp
+    LEFT JOIN Project_Action pa ON pp.id = pa.projectPhaseId AND pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE pp.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    GROUP BY pp.id, pp.name, pp.status
+    ORDER BY pp.orderNumber
+    
+    Q: List in-progress phases (status is NULL)
+    A: SELECT id, name, status, orderNumber, subscriptionId
+    FROM Project_Phase
+    WHERE status IS NULL
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY subscriptionId, orderNumber
+    
+  Project_Type: |
+    Q: List all project types for subscription 123
+    A: SELECT id, name
+    FROM Project_Type
+    WHERE subscriptionId = 123
+    AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    ORDER BY name
+    
+    Q: Show project types with their action counts
+    A: SELECT pt.id, pt.name, COUNT(pa.id) as action_count
+    FROM Project_Type pt
+    LEFT JOIN Project_Action pa ON pt.id = pa.projectTypeId AND pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE pt.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    GROUP BY pt.id, pt.name
+    ORDER BY action_count DESC
+    
+    Q: Find most used project types
+    A: SELECT pt.name, COUNT(pa.id) as usage_count
+    FROM Project_Type pt
+    JOIN Project_Action pa ON pt.id = pa.projectTypeId AND pa.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    WHERE pt.dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')
+    GROUP BY pt.id, pt.name
+    ORDER BY usage_count DESC
+    LIMIT 10

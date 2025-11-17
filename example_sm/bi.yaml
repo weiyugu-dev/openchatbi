@@ -1,0 +1,141 @@
+extra_tool_use_rule: |
+  - Try your best to give appropriate parameters when calling tools.
+  - timeseries_forecast tool requires at least 96 time points in input data. If no enough input data, set input_len to 96 to pad with zeros.
+
+table_selection_extra_rule: |
+  - When users ask about projects, consider if they need user information (join with Users table)
+  - For project action queries, always include Project table for project context
+  - Subscription-related queries often require User information (join with Users table via subscriptionId)
+  - Project phase queries should include Project and ProjectAction tables for complete workflow analysis
+  - Project type queries should include ProjectAction table for action classification
+  - When analyzing project activities, consider joining with Subscription for subscription context
+  - **IMPORTANT**: All Athena tables are daily snapshots synced from MySQL at midnight. The `dt` partition represents the snapshot date with T+1 delay (latest partition contains yesterday's data). Always include the `dt` partition column filter using the latest partition for accurate business data queries.
+
+text2sql_extra_rule: |
+  - Use proper JOIN syntax when connecting related tables (Users, Subscription, Project, ProjectAction, ProjectPhase, ProjectType)
+  - Use LIKE operator for partial string matches in user names, company names, or project names
+  - Handle NULL values properly in optional fields like clientPersonName, memo, phone, phoneFor
+  - For project phase status filtering, use appropriate status values: 'アプローチ前', 'アプローチ中', 'アプローチ済み', 'アポ獲得', '成約', '失注'
+  - When filtering active users, use deactivatedDate IS NULL
+  - When filtering active subscriptions, use expireDate IS NULL or expireDate > CURRENT_DATE
+  - For project completion queries, use completedDate IS NULL for active projects and completedDate IS NOT NULL for completed projects
+  - Use JSON functions when querying activeApplications or subsActiveApps columns
+  - Consider CASCADE delete relationships when joining with ProjectAction, SendForm, SendEmail, PhoneCall, SendDm tables
+  - Use indexed fields (actDate, isNextAction, permissionId, ownerUserGroupId, status, orderNumber) for efficient filtering
+  - **IMPORTANT - Athena Partition Column (dt)**: All Athena tables are daily snapshots synced from the MySQL business database at midnight. The `dt` partition column represents the snapshot date with a T+1 delay (the latest partition contains yesterday's data). Always filter by the latest partition using `dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')` for all business-related data queries to ensure you're querying the most recent snapshot.
+
+basic_knowledge_glossary: |
+  # Sales Marker SaaS Platform Glossary
+  
+  ## Overview
+  You're answering questions related to Sales Marker, a SaaS platform for sales and marketing automation. The platform manages user accounts, subscriptions, projects, and project activities (actions) for sales teams and organizations.
+  
+  ## Data Warehouse Architecture
+  **Athena Tables (Snapshot Data):**
+  - All Athena tables are daily snapshots synchronized from the MySQL business database
+  - Snapshots are created at midnight (00:00) each day
+  - The `dt` partition column represents the snapshot date with a T+1 delay (the latest partition contains yesterday's data)
+  - Always use the latest partition (`dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')`) for all business-related data queries to ensure you're querying the most recent snapshot
+  - Example: If today is 2024-01-16, the latest partition is `dt = '2024-01-15'` (yesterday's snapshot)
+  
+  ## Key Business Concepts
+  
+  **User Management:**
+  - User: Individual account holder with authentication credentials (Cognito ID, email, API token)
+  - User Profile: Name, company, job position, department, phone number
+  - User Level: Experience-based leveling system (1-10+) with experience points and tutorial progress
+  - User Groups: Collections of users with shared permissions and access control
+  - User Roles: Role-based access control (RBAC) for different user types
+  - Active Applications: JSON array of applications the user has access to
+  - Main Duties: JSON array of user's primary responsibilities (e.g., ["Marketing", "Sales"])
+  
+  **Subscription Management:**
+  - Subscription: Company-level subscription plan with features, limits, and pricing
+  - Subscription Plan: Base plan configuration with default settings
+  - Company: Organization that owns a subscription (identified by companyId)
+  - Subscription Features: Feature flags controlling access (DM, Engage, Workflow, IT Review, Zoom Phone, etc.)
+  - Usage Limits: Download limits, view limits, department limits, account limits, key person limits
+  - Integration Settings: Salesforce, HubSpot, Slack, Kintone, SanSan integration configurations
+  - Authentication Methods: Password or Azure SSO authentication
+  - IP Restrictions: Allowed IP addresses for subscription access
+  
+  **Project Management:**
+  - Project: Sales or marketing project targeting a specific company
+  - Project Name: Matches product.productName, used to link projects with products
+  - Project Owner: User who created/owns the project (userId)
+  - Project Completion: Projects can be active (completedDate IS NULL) or completed (completedDate IS NOT NULL)
+  - Client Person: Contact person at the target company (clientPersonName)
+  - Project Team: Multiple users can be assigned to a project via ProjectUserMap (自社担当者)
+  
+  **Project Actions:**
+  - Project Action: Individual activity performed within a project (e.g., form sent, email sent, phone call made, DM sent)
+  - Action Date: When the action was performed (actDate)
+  - Action Type: Classification via ProjectType (e.g., "Form", "Email", "Phone Call", "DM")
+  - Project Phase: Current phase of the project workflow (e.g., "アプローチ前", "アプローチ中", "成約", "失注")
+  - Next Action: Flag indicating if this is the next planned action (isNextAction)
+  - Action Sequencing: Actions can be part of sequences (sequenceId, sequenceCommonId)
+  - Communication Channels: Forms (SendForm), Emails (SendEmail), Phone Calls (PhoneCall), Direct Messages (SendDm)
+  
+  **Project Phases:**
+  - Project Phase: Stage in the project workflow (e.g., "アプローチ前", "アプローチ中", "アプローチ済み", "アポ獲得", "成約", "失注")
+  - Phase Status: Classification of phase outcome - "成約" (closed-won), "失注" (lost), or null (in-progress)
+  - Phase Order: Display order for workflow progression (orderNumber, lower numbers = earlier phases)
+  - Undeletable Phases: Phases marked with UNDELETABLE flag cannot be deleted
+  - Leader Contacted: Flag indicating if project leader has been contacted
+  
+  **Project Types:**
+  - Project Type: Classification/categorization of project actions (e.g., "Form", "Email", "Phone Call", "DM")
+  - Type-based Filtering: Actions can be filtered and analyzed by type
+  
+  **Products:**
+  - Product: Service or offering that projects are related to
+  - Product-Project Relationship: Projects are linked to products via name matching (project.name = product.productName)
+  
+  ## Business Rules
+  
+  **User-Subscription Relationship:**
+  - Users belong to subscriptions via subscriptionId
+  - One subscription can have multiple users
+  - Users can be free account users (isFreeAccount = true) or paid subscription users
+  - Users can be deactivated (deactivatedDate IS NOT NULL)
+  
+  **Project Structure:**
+  - Projects belong to subscriptions and target companies
+  - Projects have unique names within a subscription-company combination (unique constraint: companyId, subscriptionId, name)
+  - Projects can have multiple actions (ProjectAction records)
+  - Projects track the last updated action (lastUpdatedProjectActionId)
+  - Projects can have multiple team members via ProjectUserMap
+  
+  **Project Action Workflow:**
+  - Actions belong to projects, users, project types, and project phases
+  - Actions can be linked to communication channels (forms, emails, phone calls, DMs)
+  - Actions support sequencing and next action flagging
+  - Actions have permission-based access control (permissionId, ownerUserGroupId)
+  - Actions are cascade-deleted when project or communication channel is deleted
+  
+  **Project Phase Workflow:**
+  - Phases belong to subscriptions (unique name per subscription)
+  - Phases have status classifications (成約, 失注, or null for in-progress)
+  - Phases are ordered by orderNumber for workflow progression
+  - Phases can be undeletable (UNDELETABLE flag)
+  
+  **Project Type Classification:**
+  - Types belong to subscriptions (unique name per subscription)
+  - Types classify project actions for categorization and analysis
+  
+  **Subscription Features & Limits:**
+  - Subscriptions have feature flags controlling access to various features
+  - Subscriptions have usage limits (downloads, views, departments, accounts, etc.)
+  - Subscriptions can have custom pricing overrides (planPrice, addMemberPrice, various service costs)
+  - Subscriptions support multiple integrations (Salesforce, HubSpot, Slack, Kintone, SanSan)
+  
+  ## Common Query Patterns
+  
+  - User activity analysis: Join Users with ProjectAction via userId
+  - Project progress tracking: Join Project with ProjectAction and ProjectPhase
+  - Subscription analytics: Join Subscription with Users and Projects
+  - Action type analysis: Join ProjectAction with ProjectType
+  - Phase-based filtering: Filter ProjectAction by projectPhaseId and ProjectPhase.status
+  - Communication channel analysis: Filter ProjectAction by sendFormId, sendEmailId, phoneCallId, sendDmId
+  - Project completion analysis: Filter Project by completedDate
+  - Active user/subscription filtering: Use deactivatedDate IS NULL and expireDate IS NULL

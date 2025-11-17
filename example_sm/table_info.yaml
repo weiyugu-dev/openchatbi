@@ -1,0 +1,216 @@
+? ''
+: user:
+    description: 'Core user account management table for the Sales Marker SaaS platform. Stores user authentication credentials (Cognito ID, email, API token), profile information (name, company, job position, department), user preferences and settings (email notifications, active applications, user level, experience points), onboarding state (tutorial progress, default product/target/USP), and activity tracking (last activity date, feature visit flags). Links users to subscriptions, projects, invitations, company lists, search conditions, CSV tables, verified email/Salesforce accounts, and various user-related entities. Supports user deactivation, free account flags, and role-based access control through user groups.'
+    selection_rule: |
+      - Select when queries involve user account information, user profiles, or user authentication
+      - Use for user activity analysis, user engagement metrics, or user behavior tracking
+      - Select when filtering or grouping by user attributes (company, department, job position, level)
+      - Use for user subscription relationships, user role assignments, or permission queries
+      - Select when analyzing user onboarding progress, tutorial completion, or experience points
+      - Use for user deactivation queries, free account analysis, or user segmentation
+      - Select when joining with user-related entities (projects, invitations, company lists, CSV tables)
+    sql_rule: |
+      - **IMPORTANT**: This Athena table is a daily snapshot synced from MySQL at midnight. Always filter by the latest partition using `dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')` to query the most recent snapshot data.
+      - Use `id` as primary key for joins and user identification
+      - Join with `Subscription` table via `subscriptionId` for subscription information
+      - Join with `UserRole` table via `roleId` for role-based access control
+      - Join with `UserLevelExperience` table via `level` for level-related information
+      - Filter by `email` for user lookup (unique constraint)
+      - Filter by `cognitoId` for AWS Cognito authentication (unique constraint)
+      - Use `deactivatedDate IS NULL` to filter active users only
+      - Use `isFreeAccount = true/false` to segment free vs paid users
+      - Filter by `lastActivityDate` for user engagement analysis (use date range filters)
+      - Use `activeApplications` JSON column with JSON functions for application-specific queries
+      - Filter by `mainDuties` JSON array column for duty-based segmentation
+      - Use `createdAt` and `updatedAt` for temporal analysis and user lifecycle tracking
+      - When joining with user-related tables, use appropriate foreign key relationships (userCompanyLists, userProjects, etc.)
+      - For user group queries, join through UserGroupUserMap table
+      - Consider using `subscriptionId` for subscription-related user analysis 
+  subscription:
+    description: 'Core subscription management table for the Sales Marker SaaS platform. Stores subscription plan details, company information (company ID, name, domain), subscription lifecycle (start date, expiration date), pricing and cost configuration (plan price, add member price, various service costs for forms, emails, users, keywords, downloads, views, intent services, CTI), feature flags and permissions (workflow, tier, DM, Engage, IT Review, Zoom Phone, branch, job listing table, CSV upload, private data sharing, opportunity summary download), usage limits (download limits, view limits, department limits, account limits, key person limits, free user/keyword counts), integration settings (Salesforce webhook URL, Slack token, enabled integrations for SanSan/Salesforce/HubSpot/Kintone), authentication methods (password, Azure SSO), IP address restrictions, session limits, and discount information. Links subscriptions to users, subscription plans, intent segments, forms, emails, phone calls, biz cards, CSV tables, products, invitations, contacts (HubSpot/Salesforce/Kintone), workflows, domains, projects, talk scripts, and various subscription-related entities.'
+    selection_rule: |
+      - Select when queries involve subscription information, subscription plans, or subscription management
+      - Use for subscription pricing analysis, cost calculations, or revenue analysis
+      - Select when filtering by company subscriptions, subscription status, or expiration dates
+      - Use for feature availability queries (which subscriptions have access to specific features)
+      - Select when analyzing subscription limits, usage quotas, or capacity planning
+      - Use for integration status queries (Salesforce, HubSpot, Slack, etc.)
+      - Select when joining with user subscriptions, subscription plans, or subscription-related entities
+      - Use for subscription lifecycle analysis (active subscriptions, expired subscriptions, renewal dates)
+      - Select when analyzing subscription discounts, special pricing, or payment methods
+      - Use for subscription feature flag queries (DM, Engage, Workflow, IT Review, etc.)
+    sql_rule: |
+      - **IMPORTANT**: This Athena table is a daily snapshot synced from MySQL at midnight. Always filter by the latest partition using `dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')` to query the most recent snapshot data.
+      - Use `id` as primary key for joins and subscription identification
+      - Use `uuid` for unique subscription identification (UUID format)
+      - Join with `SubscriptionPlan` table for plan details and base configuration
+      - Join with `Users` table via reverse relationship (users.subscriptionId) for subscription users
+      - Join with `UserGroup` table via `defaultUserGroupId` for default user group
+      - Join with `User` table via `systemUserId` for system user relationship
+      - Filter by `companyId` for company-specific subscriptions (bigint type)
+      - Filter by `companyName` for company name-based queries
+      - Use `startDate` and `expireDate` for subscription lifecycle analysis
+      - Filter by `expireDate IS NULL` or `expireDate > CURRENT_DATE` for active subscriptions
+      - Use `inNegotiation = true/false` to filter subscriptions in negotiation
+      - Filter by feature flags (canUseDm, canUseEngage, canUseWorkflow, canUseITReviewIntent, etc.) for feature availability
+      - Use `subsActiveApps` JSON column with JSON functions for active applications analysis
+      - Filter by integration flags (enableSalesforce, enableHubSpot, enableKintone, enableSanSan) for integration status
+      - Use `authenticationMethods` to filter by authentication type (password, azure)
+      - Filter by `allowedIpAddresses` for IP-restricted subscriptions
+      - Use pricing fields (planPrice, addMemberPrice, formCost, mailCost, userCost, keywordCost, etc.) for cost analysis
+      - Use limit fields (customDownloadLimit, customNumDepartmentDownloadLimit, customNumAccountLimit, etc.) for capacity analysis
+      - Use `freeUserCount` and `freeKeywordCount` for free tier analysis
+      - Use `specialDiscount` for discount analysis
+      - Filter by `payment` field for payment method analysis (振り込み/クレジットカード)
+      - Use `maxSession` for session limit queries
+      - Filter by `domain` for domain-based subscription queries
+      - Use `createdAt` and `updatedAt` for temporal analysis and subscription lifecycle tracking
+      - When joining with subscription-related tables, use appropriate foreign key relationships
+      - Consider using `subscriptionPlan` relationship for plan-based analysis
+      - For deprecated fields (wantDepartmentIds, dueDate, freeCompanyListExportCount, intent*FreeBudget), avoid using in new queries
+  project:
+    description: 'Project management table for the Sales Marker SaaS platform. Stores project information including project name (which matches product.productName and can be used to join with product table), project completion status (completedDate), client person name, and project lifecycle timestamps. Enforces unique constraint on combination of companyId, subscriptionId, and name to ensure project uniqueness within a subscription and company context. Links projects to users (project owner/creator), subscriptions (subscription context), companies (target company), products (via name matching with product.productName), and project actions (project activities and history). Tracks the last updated project action for efficient querying of recent project activity. Supports many-to-many relationship with users through ProjectUserMap junction table for project team members (自社担当者).'
+    selection_rule: |
+      - Select when queries involve project information, project management, or project tracking
+      - Use for project completion analysis, project status queries, or project lifecycle tracking
+      - Select when filtering by company projects, subscription projects, or user projects
+      - Use for project-product relationship queries (join via project name matching product.productName)
+      - Select when analyzing project actions, project activity history, or project updates
+      - Use for project team member queries (join with ProjectUserMap for project-user relationships)
+      - Select when filtering by project completion status (completed vs active projects)
+      - Use for client person queries or client relationship analysis
+      - Select when joining with companies, subscriptions, or users for project context
+      - Use for project creation date analysis or project timeline queries
+    sql_rule: |
+      - **IMPORTANT**: This Athena table is a daily snapshot synced from MySQL at midnight. Always filter by the latest partition using `dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')` to query the most recent snapshot data.
+      - Use `id` as primary key for joins and project identification
+      - Join with `User` table via `userId` for project owner/creator information
+      - Join with `Subscription` table via `subscriptionId` for subscription context
+      - Join with `Company` table via `companyId` for target company information
+      - Join with `Product` table via `name = product.productName` for product relationship (name field matches product.productName)
+      - Join with `ProjectAction` table via reverse relationship for project actions and activity history
+      - Use `lastUpdatedProjectActionId` to efficiently query the most recent project action
+      - Filter by `name` for project name-based queries (indexed field)
+      - Filter by `companyId` for company-specific projects
+      - Filter by `subscriptionId` for subscription-specific projects
+      - Filter by `userId` for user-owned projects
+      - Filter by `productId` for product-specific projects (indexed field)
+      - Use `completedDate IS NULL` to filter active/in-progress projects
+      - Use `completedDate IS NOT NULL` to filter completed projects
+      - Filter by `completedDate` for project completion date analysis (use date range filters)
+      - Filter by `clientPersonName` for client person-based queries
+      - Use `createdAt` and `updatedAt` for temporal analysis and project lifecycle tracking
+      - For project team member queries, join with `ProjectUserMap` table using `projectId`
+      - Use unique constraint (companyId, subscriptionId, name) when inserting/updating projects
+      - When querying project actions, use `lastUpdatedProjectActionId` for efficient access to latest action
+      - Consider using `name` field for product-related queries since it matches product.productName
+      - Filter by `subscriptionId` and `companyId` together for subscription-company project queries
+  project_action:
+    description: 'Project activity tracking table for the Sales Marker SaaS platform. Stores individual actions performed within projects, including action date (actDate), action type (via projectTypeId), project phase (via projectPhaseId), user who performed the action (userId), and optional contact information (phone, phoneFor for tele-appointment context, client person name). Links project actions to various communication channels: forms (sendFormId), emails (sendEmailId), phone calls (phoneCallId), and direct messages (sendDmId). Supports action sequencing (sequenceId, sequenceCommonId), next action flagging (isNextAction), permission-based access control (permissionId, ownerUserGroupId), and memo/notes for action details. Tracks action lifecycle through timestamps (createdAt, updatedAt). Supports many-to-many relationship with products through ProjectActionProductMap junction table. Actions are cascade-deleted when associated project, form, email, phone call, or DM is deleted. Used for project activity history, action tracking, communication analytics, and project progress monitoring.'
+    selection_rule: |
+      - Select when queries involve project activity tracking, action history, or project progress
+      - Use for analyzing communication activities (forms, emails, phone calls, DMs) within projects
+      - Select when filtering by action date, action type, or project phase
+      - Use for user activity analysis (which users performed which actions)
+      - Select when analyzing next actions, action sequencing, or workflow progression
+      - Use for client person tracking or contact information queries
+      - Select when filtering by project actions, project activity timeline, or action frequency
+      - Use for permission-based action queries or user group ownership analysis
+      - Select when joining with projects, users, project types, or project phases for context
+      - Use for communication channel analysis (form vs email vs phone vs DM)
+      - Select when analyzing product-related actions (join with ProjectActionProductMap)
+    sql_rule: |
+      - **IMPORTANT**: This Athena table is a daily snapshot synced from MySQL at midnight. Always filter by the latest partition using `dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')` to query the most recent snapshot data.
+      - Use `id` as primary key for joins and action identification
+      - Join with `Project` table via `projectId` for project context (CASCADE delete)
+      - Join with `User` table via `userId` for user who performed the action
+      - Join with `ProjectType` table via `projectTypeId` for action type classification
+      - Join with `ProjectPhase` table via `projectPhaseId` for project phase context
+      - Join with `SendForm` table via `sendFormId` for form-related actions (CASCADE delete, nullable)
+      - Join with `SendEmail` table via `sendEmailId` for email-related actions (CASCADE delete, nullable)
+      - Join with `PhoneCall` table via `phoneCallId` for phone call actions (CASCADE delete, nullable)
+      - Join with `SendDm` table via `sendDmId` for DM actions (CASCADE delete, nullable)
+      - Filter by `projectId` for project-specific actions
+      - Filter by `userId` for user-specific actions
+      - Filter by `actDate` for action date-based queries (indexed field, use date range filters)
+      - Filter by `projectTypeId` for action type-based queries
+      - Filter by `projectPhaseId` for phase-based queries
+      - Use `isNextAction = true` to filter next actions (indexed field)
+      - Filter by `permissionId` for permission-based queries (indexed field, nullable)
+      - Filter by `ownerUserGroupId` for user group ownership queries (indexed field, nullable)
+      - Filter by `clientPersonName` for client person-based queries
+      - Filter by `phone` or `phoneFor` for phone-related action queries
+      - Use `sequenceId` or `sequenceCommonId` for sequence-based action queries
+      - Filter by communication channel (sendFormId IS NOT NULL, sendEmailId IS NOT NULL, phoneCallId IS NOT NULL, sendDmId IS NOT NULL)
+      - Use `createdAt` and `updatedAt` for temporal analysis and action lifecycle tracking
+      - For product-related actions, join with `ProjectActionProductMap` table using `projectActionId`
+      - When querying project actions, consider using `actDate` index for efficient date-based filtering
+      - Use `memo` field for action notes and details (text type)
+      - Consider CASCADE delete behavior when deleting related entities (project, form, email, phone call, DM)
+      - Filter by `projectId` and `actDate` together for project timeline queries
+      - Use `isNextAction` flag for workflow progression analysis
+  project_phase:
+    description: 'Project phase configuration table for the Sales Marker SaaS platform. Stores project phase definitions including phase name, status classification (成約/closed-won, 失注/lost, or null for in-progress phases), display order (orderNumber), and phase flags (UNDELETABLE). Enforces unique constraint on combination of name and subscriptionId to ensure phase name uniqueness within each subscription. Links phases to subscriptions (subscription context) and project actions (actions performed in each phase). Supports phase ordering for workflow progression, status tracking for closed/lost projects, and undeletable phase protection. Tracks leader contact status (leaderContacted) and phase lifecycle through timestamps (createdAt, updatedAt). Used for project workflow management, phase-based filtering, project status tracking, and action phase classification.'
+    selection_rule: |
+      - Select when queries involve project phase information, phase configuration, or workflow management
+      - Use for phase-based project filtering or project status analysis
+      - Select when filtering by phase status (apo-before:アプローチ前, apo-in-progress:アプローチ中, apo-completed:アプローチ済み, apo-won:アポ獲得, closed-won:成約, lost:失注)
+      - Use for phase ordering queries or workflow progression analysis
+      - Select when analyzing project actions by phase or phase-based activity tracking
+      - Use for subscription-specific phase configuration queries
+      - Select when filtering by phase flags (undeletable phases)
+      - Use for leader contact status queries or phase completion tracking
+      - Select when joining with subscriptions or project actions for phase context
+      - Use for phase lifecycle analysis or phase creation/update tracking
+    sql_rule: |
+      - **IMPORTANT**: This Athena table is a daily snapshot synced from MySQL at midnight. Always filter by the latest partition using `dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')` to query the most recent snapshot data.
+      - Use `id` as primary key for joins and phase identification
+      - Join with `Subscription` table via `subscriptionId` for subscription context
+      - Join with `ProjectAction` table via reverse relationship for actions in this phase (CASCADE delete)
+      - Filter by `subscriptionId` for subscription-specific phases
+      - Filter by `name` for phase name-based queries
+      - Filter by `status` for phase status-based queries (indexed field, nullable)
+      - Use `status = 'アプローチ前'` or `status IS NULL` to filter apo-before phases
+      - Use `status = 'アプローチ中'` to filter apo-in-progress phases
+      - Use `status = 'アプローチ済み'` to filter apo-completed phases
+      - Use `status = 'アポ獲得'` to filter apo-won phases
+      - Use `status = '成約'` to filter closed-won phases
+      - Use `status = '失注'` to filter lost phases
+      - status is structured as a enum: アプローチ前, アプローチ中, アプローチ済み, アポ獲得, 成約, 失注
+      - name is user customized phase name
+      - Filter by `orderNumber` for phase ordering queries (indexed field, default 0)
+      - Use `orderNumber` for sorting phases in workflow order
+      - Filter by `flags` for phase flag queries (check for UNDELETABLE flag)
+      - Use `leaderContacted = true/false` to filter by leader contact status
+      - Use unique constraint (name, subscriptionId) when inserting/updating phases
+      - Use `createdAt` and `updatedAt` for temporal analysis and phase lifecycle tracking
+      - When querying project actions by phase, join with ProjectAction table via projectPhaseId
+      - Consider using `status` index for efficient status-based filtering
+      - Consider using `orderNumber` index for efficient ordering queries
+      - Filter by `subscriptionId` and `status` together for subscription-phase status analysis
+      - Use `orderNumber` for workflow progression queries (lower numbers typically indicate earlier phases)
+  project_type:
+    description: 'Project type configuration table for the Sales Marker SaaS platform. Stores project type definitions (action type classifications) including type name and subscription context. Enforces unique constraint on combination of name and subscriptionId to ensure type name uniqueness within each subscription. Links project types to subscriptions (subscription context) and project actions (actions classified by type). Used for categorizing and classifying project actions by type, enabling type-based filtering and analysis of project activities. Tracks type lifecycle through timestamps (createdAt, updatedAt). Supports cascade deletion of project actions when project type is deleted. Used for project action type management, type-based action filtering, and action classification analytics.'
+    selection_rule: |
+      - Select when queries involve project type information, type configuration, or action type classification
+      - Use for type-based project action filtering or action type analysis
+      - Select when analyzing project actions by type or type-based activity tracking
+      - Use for subscription-specific type configuration queries
+      - Select when filtering or grouping project actions by type
+      - Use for action type categorization queries or type-based reporting
+      - Select when joining with subscriptions or project actions for type context
+      - Use for type lifecycle analysis or type creation/update tracking
+      - Select when analyzing action distribution across different project types
+    sql_rule: |
+      - **IMPORTANT**: This Athena table is a daily snapshot synced from MySQL at midnight. Always filter by the latest partition using `dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d')` to query the most recent snapshot data.
+      - Use `id` as primary key for joins and type identification
+      - Join with `Subscription` table via `subscriptionId` for subscription context
+      - Join with `ProjectAction` table via reverse relationship for actions of this type (CASCADE delete)
+      - Filter by `subscriptionId` for subscription-specific types
+      - Filter by `name` for type name-based queries
+      - Use unique constraint (name, subscriptionId) when inserting/updating types
+      - Use `createdAt` and `updatedAt` for temporal analysis and type lifecycle tracking
+      - When querying project actions by type, join with ProjectAction table via projectTypeId
+      - Filter by `subscriptionId` and `name` together for subscription-type queries
+      - Consider using type name for action categorization and filtering
+      - Use type-based grouping for action distribution analysis
